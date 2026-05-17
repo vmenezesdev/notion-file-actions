@@ -21,6 +21,7 @@ import { Client } from '@notionhq/client';
 
 const app = new Hono()
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
+const materialsDatabaseId = process.env.NOTION_ROOT_PAGE_ID;
 
 
 // Notion rate limit: 3 req/s (we stay at 2 to be safe).
@@ -44,69 +45,70 @@ async function ensureRateLimit(): Promise<void> {
 }
 
 app.post('/', async (c) => {
-    // Await for the Notion internals create the bond between the original page and the copy. 
-    // Otherwise we will get TypeError: Cannot read properties of undefined (reading 'id')
-
     let files: NotionFileFromWebhook[] = []
-    let newPageId: string | undefined = undefined;
+    let targetPageId: string | undefined = undefined;
+    let sourcePageId: string | undefined = undefined;
 
-
-    await sleep(1000);
     const body = await c.req.json();
-    files = body.data.properties['Arquivos e mídia'].files as NotionFileFromWebhook[];
-    if (files.length > 0) {
-        newPageId = body?.data?.properties['📝 Materiais de Estudo']?.relation[0]?.id;
-    }
 
-    const sourcePageId = body.data.id;
+    sourcePageId = body.data.id;
 
-    const freshPage = await notion.pages.retrieve({
-        page_id: sourcePageId,
-    });
-
-    console.log("Fresh Notion page properties", Object.entries((freshPage as any).properties).map(
-        ([name, prop]: [string, any]) => ({
-            name,
-            id: prop.id,
-            type: prop.type,
-            relation: prop.type === "relation" ? prop.relation : undefined,
-            filesCount: prop.type === "files" ? prop.files?.length : undefined,
-        })
-    ));
-
-
-    if (!newPageId) {
-        console.log("Relation not ready yet", {
-            filesCount: files.length,
-            hasMateriaisProperty: Boolean(body?.data?.properties['📝 Materiais de Estudo']),
-            relation: body?.data?.properties['📝 Materiais de Estudo']?.relation,
-        });
-
-        console.log("Webhook properties", Object.entries(body.data.properties).map(
-            ([name, prop]: [string, any]) => ({
-                name,
-                id: prop.id,
-                type: prop.type,
-                relation: prop.type === "relation" ? prop.relation : undefined,
-                filesCount: prop.type === "files" ? prop.files?.length : undefined,
-            })
-        ));
-
-        console.log("Webhook source page", {
-            id: body.data.id,
-            url: body.data.url,
-            title: body.data.properties["Nome do Material"],
-        });
-
+    if (!sourcePageId) {
         return c.json(
             {
-                ok: true,
-                status: "pending",
-                reason: "Relation not ready yet. Try again after Notion finishes updating the page.",
+                ok: false,
+                reason: "Source page ID not found in webhook payload",
             },
-            202
+            400
         );
+    }
 
+    files = body.data.properties['Arquivos e mídia'].files as NotionFileFromWebhook[];
+
+    if (files.length > 0) {
+        targetPageId = body?.data?.properties['📝 Materiais de Estudo']?.relation[0]?.id;
+    }
+    if (!targetPageId) {
+        // Fallback logic for getting target page ID if not found in the expected property
+        // 2. Fallback: o destino sabe a fonte
+
+        if (!materialsDatabaseId) {
+            return c.json(
+                {
+                    ok: false,
+                    reason: "Materials database ID misconfigured"
+                }, 400
+            )
+        }
+
+        const materialPageOfGivenForm = await notion.dataSources.query({
+            data_source_id: materialsDatabaseId,
+            filter: {
+                property: "Formulário",
+                relation: {
+                    contains: sourcePageId
+                }
+            },
+            sorts: [
+                {
+                    timestamp: "created_time",
+                    direction: "descending"
+                }
+            ],
+            page_size: 1
+        })
+
+        targetPageId = materialPageOfGivenForm.results[0]?.id;
+    }
+
+    if (!targetPageId) {
+        return c.json(
+            {
+                ok: false,
+                reason: "Target page ID not found in webhook payload",
+            },
+            400
+        );
     }
 
     for (const f of files) {
@@ -120,7 +122,7 @@ app.post('/', async (c) => {
 
         try {
             await notion.pages.update({
-                page_id: newPageId,
+                page_id: targetPageId,
                 properties: {
                     "Arquivos e mídia": {
                         type: "files",
