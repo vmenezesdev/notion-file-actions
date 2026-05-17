@@ -101,7 +101,7 @@ app.post('/', async (c) => {
         }
 
         // Get datasource
-        const datasourceId = getDatasourceId();
+        const datasourceId = await getDatasourceId();
 
         if (!datasourceId) {
             return c.json({
@@ -111,7 +111,7 @@ app.post('/', async (c) => {
         }
 
         const materialPageOfGivenForm = await notion.dataSources.query({
-            data_source_id: materiasDatabasePageId,
+            data_source_id: datasourceId,
             filter: {
                 property: "Formulário",
                 relation: {
