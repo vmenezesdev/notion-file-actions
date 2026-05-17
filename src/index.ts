@@ -50,17 +50,17 @@ app.post('/', async (c) => {
     let files: NotionFileFromWebhook[] = []
     let newPageId: string | undefined = undefined;
 
-    while (!newPageId) {
-        await sleep(1000);
-        const body = await c.req.json();
-        files = body.data.properties['Arquivos e mídia'].files as NotionFileFromWebhook[];
-        if (files.length > 0) {
-            newPageId = body?.data?.properties['📝 Materiais de Estudo']?.relation[0]?.id;
-        }
-    }   
+
+    await sleep(1000);
+    const body = await c.req.json();
+    files = body.data.properties['Arquivos e mídia'].files as NotionFileFromWebhook[];
+    if (files.length > 0) {
+        newPageId = body?.data?.properties['📝 Materiais de Estudo']?.relation[0]?.id;
+    }
+
 
     if (!newPageId) {
-        return c.text('No new page ID found');
+        return c.json({ ok: false, error: "Missing source page id" }, 400);
     }
 
     for (const f of files) {
