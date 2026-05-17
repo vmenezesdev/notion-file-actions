@@ -19,7 +19,15 @@ import { Hono } from 'hono';
 import { uploadFileToNotion } from './notion/upload';
 import { Client } from '@notionhq/client';
 
-const app = new Hono()
+type Env = {
+    Bindings: {
+        WEBHOOK_SECRET: string;
+        NOTION_API_KEY: string;
+        NOTION_ROOT_PAGE_ID: string;
+    };
+};
+
+const app = new Hono<{ Bindings: Env['Bindings'] }>()
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const materiasDatabasePageId = process.env.NOTION_ROOT_PAGE_ID;
 
@@ -64,6 +72,13 @@ export async function getDatasourceId() {
 }
 
 app.post('/', async (c) => {
+
+    const secret = c.req.header("x-webhook-secret")
+
+    if (!secret || secret !== c.env.WEBHOOK_SECRET) {
+        return c.json({ ok: false, error: "Unauthorized" }, 401)
+    }
+
     let files: NotionFileFromWebhook[] = []
     let targetPageId: string | undefined = undefined;
     let sourcePageId: string | undefined = undefined;
