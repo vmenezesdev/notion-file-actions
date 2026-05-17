@@ -60,7 +60,21 @@ app.post('/', async (c) => {
 
 
     if (!newPageId) {
-        return c.json({ ok: false, error: "Missing source page id" }, 400);
+        console.log("Relation not ready yet", {
+            filesCount: files.length,
+            hasMateriaisProperty: Boolean(body?.data?.properties['📝 Materiais de Estudo']),
+            relation: body?.data?.properties['📝 Materiais de Estudo']?.relation,
+        });
+
+        return c.json(
+            {
+                ok: true,
+                status: "pending",
+                reason: "Relation not ready yet. Try again after Notion finishes updating the page.",
+            },
+            202
+        );
+
     }
 
     for (const f of files) {
