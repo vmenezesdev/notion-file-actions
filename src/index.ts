@@ -58,12 +58,44 @@ app.post('/', async (c) => {
         newPageId = body?.data?.properties['📝 Materiais de Estudo']?.relation[0]?.id;
     }
 
+    const sourcePageId = body.data.id;
+
+    const freshPage = await notion.pages.retrieve({
+        page_id: sourcePageId,
+    });
+
+    console.log("Fresh Notion page properties", Object.entries((freshPage as any).properties).map(
+        ([name, prop]: [string, any]) => ({
+            name,
+            id: prop.id,
+            type: prop.type,
+            relation: prop.type === "relation" ? prop.relation : undefined,
+            filesCount: prop.type === "files" ? prop.files?.length : undefined,
+        })
+    ));
+
 
     if (!newPageId) {
         console.log("Relation not ready yet", {
             filesCount: files.length,
             hasMateriaisProperty: Boolean(body?.data?.properties['📝 Materiais de Estudo']),
             relation: body?.data?.properties['📝 Materiais de Estudo']?.relation,
+        });
+
+        console.log("Webhook properties", Object.entries(body.data.properties).map(
+            ([name, prop]: [string, any]) => ({
+                name,
+                id: prop.id,
+                type: prop.type,
+                relation: prop.type === "relation" ? prop.relation : undefined,
+                filesCount: prop.type === "files" ? prop.files?.length : undefined,
+            })
+        ));
+
+        console.log("Webhook source page", {
+            id: body.data.id,
+            url: body.data.url,
+            title: body.data.properties["Nome do Material"],
         });
 
         return c.json(
