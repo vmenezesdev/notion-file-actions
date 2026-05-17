@@ -16,7 +16,7 @@ Example of using Hono framework in Cloudflare Workers
 */
 
 import { Hono } from 'hono';
-import { uploadFileToNotion } from './notion/upload';
+import { FileUploadResult, uploadFileToNotion } from './notion/upload';
 import { Client } from '@notionhq/client';
 
 type Env = {
@@ -69,9 +69,6 @@ export async function getDatasourceId(databaseId: string, notion: Client) {
 }
 
 app.post('/', async (c) => {
-
-
-
     const secret = c.req.header("x-webhook-secret")
 
     if (!secret || secret !== c.env.WEBHOOK_SECRET) {
@@ -156,6 +153,8 @@ app.post('/', async (c) => {
         );
     }
 
+    const uploadedFiles: FileUploadResult[] = [];
+
     for (const f of files) {
 
         const uploaded = await uploadFileToNotion(f, ensureRateLimit);
@@ -164,31 +163,29 @@ app.post('/', async (c) => {
             continue;
         }
 
-        try {
-            await notion.pages.update({
-                page_id: targetPageId,
-                properties: {
-                    "Arquivos e mídia": {
-                        type: "files",
-                        files: [{
-                            type: "file_upload",
-                            file_upload: {
-                                id: uploaded.fileUploadId
-                            },
-                            name: uploaded.filename
-                        }]
-                    }
-                }
-            });
-
-
-
-        } catch (e) {
-            console.log(e)
-        } finally {
-        }
-
+        uploadedFiles.push(uploaded);
     }
+
+    try {
+        await notion.pages.update({
+            page_id: targetPageId,
+            properties: {
+                "Arquivos e mídia": {
+                    type: "files",
+                    files: uploadedFiles.map((uf) => ({
+                        type: "file_upload",
+                        file_upload: {
+                            id: uf.fileUploadId
+                        },
+                        name: uf.filename
+                    }))
+                }
+            }
+        });
+    } catch (e) {
+        // Logs go to Cloudflare dashboard and are super helpful for debugging in production
+        console.log(e)
+    } 
 
     return c.text('Hello Cloudflare Workers!')
 })
