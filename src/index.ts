@@ -68,70 +68,11 @@ export async function getDatasourceId(databaseId: string, notion: Client) {
     }
 }
 
-async function fingerprint(value: string | undefined): Promise<string | null> {
-    if (!value) return null;
-
-    const data = new TextEncoder().encode(value);
-    const hash = await crypto.subtle.digest("SHA-256", data);
-    const bytes = [...new Uint8Array(hash)];
-
-    return bytes
-        .slice(0, 8)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-}
-
-function secretShape(value: string | undefined) {
-    return {
-        present: Boolean(value),
-        length: value?.length ?? 0,
-        trimmedLength: value?.trim().length ?? 0,
-        startsWithSpace: value?.startsWith(" ") ?? false,
-        endsWithSpace: value?.endsWith(" ") ?? false,
-        startsWithQuote: value?.startsWith('"') ?? false,
-        endsWithQuote: value?.endsWith('"') ?? false,
-    };
-}
-
-
-
 app.post('/', async (c) => {
+
+
+
     const secret = c.req.header("x-webhook-secret")
-
-    const receivedSecretRaw = c.req.header("x-webhook-secret");
-    const expectedSecretRaw = c.env.WEBHOOK_SECRET;
-
-    const receivedSecret = receivedSecretRaw?.trim();
-    const expectedSecret = expectedSecretRaw?.trim();
-
-    console.log("Webhook secret debug", {
-        received: secretShape(receivedSecretRaw),
-        expected: secretShape(expectedSecretRaw),
-        receivedFingerprint: await fingerprint(receivedSecret),
-        expectedFingerprint: await fingerprint(expectedSecret),
-        matchesRaw: receivedSecretRaw === expectedSecretRaw,
-        matchesTrimmed: receivedSecret === expectedSecret,
-    });
-
-    if (!expectedSecret) {
-        return c.json(
-            {
-                ok: false,
-                error: "WEBHOOK_SECRET not configured",
-            },
-            500
-        );
-    }
-
-    if (!receivedSecret || receivedSecret !== expectedSecret) {
-        return c.json(
-            {
-                ok: false,
-                error: "Unauthorized",
-            },
-            401
-        );
-    }
 
     if (!secret || secret !== c.env.WEBHOOK_SECRET) {
         return c.json({ ok: false, error: "Unauthorized" }, 401)
