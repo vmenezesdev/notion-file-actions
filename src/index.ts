@@ -21,7 +21,7 @@ import { Client } from '@notionhq/client';
 
 const app = new Hono()
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const materialsDatabaseId = process.env.NOTION_ROOT_PAGE_ID;
+const materiasDatabasePageId = process.env.NOTION_ROOT_PAGE_ID;
 
 
 // Notion rate limit: 3 req/s (we stay at 2 to be safe).
@@ -42,6 +42,25 @@ async function ensureRateLimit(): Promise<void> {
         await sleep(wait);
     }
     lastRequestTime = Date.now();
+}
+
+export async function getDatasourceId() {
+    const databaseId = process.env.NOTION_ROOT_PAGE_ID;
+
+    const response = await notion.databases.retrieve({ database_id: databaseId! });
+
+    if ("data_sources" in response) {
+        const dataSourceIds = response.data_sources;
+        const firstDataSourceId = dataSourceIds[0];
+        if (!firstDataSourceId) {
+            return null; // No data sources found
+        }
+        const dataSource = await notion.dataSources.retrieve({ data_source_id: firstDataSourceId.id });
+        if (!dataSource) {
+            return null; // Data source not found
+        }
+        return dataSource.id;
+    }
 }
 
 app.post('/', async (c) => {
@@ -72,17 +91,27 @@ app.post('/', async (c) => {
         // Fallback logic for getting target page ID if not found in the expected property
         // 2. Fallback: o destino sabe a fonte
 
-        if (!materialsDatabaseId) {
+        if (!materiasDatabasePageId) {
             return c.json(
                 {
                     ok: false,
-                    reason: "Materials database ID misconfigured"
+                    reason: "Materials database page ID misconfigured"
                 }, 400
             )
         }
 
+        // Get datasource
+        const datasourceId = getDatasourceId();
+
+        if (!datasourceId) {
+            return c.json({
+                ok: false, reason: "Could not retrieve datasource"
+
+            }, 400)
+        }
+
         const materialPageOfGivenForm = await notion.dataSources.query({
-            data_source_id: materialsDatabaseId,
+            data_source_id: materiasDatabasePageId,
             filter: {
                 property: "Formulário",
                 relation: {
@@ -118,7 +147,6 @@ app.post('/', async (c) => {
         if (!uploaded) {
             continue;
         }
-
 
         try {
             await notion.pages.update({
