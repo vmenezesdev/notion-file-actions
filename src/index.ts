@@ -28,8 +28,6 @@ type Env = {
 };
 
 const app = new Hono<{ Bindings: Env['Bindings'] }>()
-const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const materiasDatabasePageId = process.env.NOTION_ROOT_PAGE_ID;
 
 
 // Notion rate limit: 3 req/s (we stay at 2 to be safe).
@@ -52,8 +50,7 @@ async function ensureRateLimit(): Promise<void> {
     lastRequestTime = Date.now();
 }
 
-export async function getDatasourceId() {
-    const databaseId = process.env.NOTION_ROOT_PAGE_ID;
+export async function getDatasourceId(databaseId: string, notion: Client) {
 
     const response = await notion.databases.retrieve({ database_id: databaseId! });
 
@@ -73,11 +70,15 @@ export async function getDatasourceId() {
 
 app.post('/', async (c) => {
 
+
+
     const secret = c.req.header("x-webhook-secret")
 
     if (!secret || secret !== c.env.WEBHOOK_SECRET) {
         return c.json({ ok: false, error: "Unauthorized" }, 401)
     }
+
+    const notion = new Client({ auth: c.env.NOTION_API_KEY });
 
     let files: NotionFileFromWebhook[] = []
     let targetPageId: string | undefined = undefined;
@@ -106,7 +107,7 @@ app.post('/', async (c) => {
         // Fallback logic for getting target page ID if not found in the expected property
         // 2. Fallback: o destino sabe a fonte
 
-        if (!materiasDatabasePageId) {
+        if (!c.env.NOTION_ROOT_PAGE_ID) {
             return c.json(
                 {
                     ok: false,
@@ -116,7 +117,7 @@ app.post('/', async (c) => {
         }
 
         // Get datasource
-        const datasourceId = await getDatasourceId();
+        const datasourceId = await getDatasourceId(c.env.NOTION_ROOT_PAGE_ID, notion);
 
         if (!datasourceId) {
             return c.json({
